@@ -370,7 +370,7 @@ store_json_field({N, V}, Dict) ->
 decode_json_field_name(N) ->
     try binary_to_existing_atom(N, utf8)
     catch
-        error:badarg -> N
+        error:badarg -> binary_to_atom(N, utf8)
     end.
 
 
