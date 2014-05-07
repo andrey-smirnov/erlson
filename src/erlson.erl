@@ -28,11 +28,11 @@
 
 % public API
 -export([from_proplist/1, from_nested_proplist/1, from_nested_proplist/2]).
--export([to_json/1, from_json/1]).
+-export([to_json/1, from_json/1, from_json/2]).
 -export([list_to_json_array/1, list_from_json_array/1]).
 % these two functions are useful, if there's a need to call mochijson2:decode
 % and mochijson2:encode separately
--export([to_json_term/1, from_json_term/1]).
+-export([to_json_term/1, from_json_term/1, from_json_term/2]).
 
 % these functions are used by Erlson compiled code
 -export([fetch/2, store/3]).
@@ -310,17 +310,29 @@ encode_json_term(_) ->
 % @doc Create Erlson dictionary from JSON Object
 -spec from_json/1 :: (Json :: iodata()) -> orddict().
 from_json(Json) ->
+    from_json(Json, false).
+
+% @doc Create Erlson disctionary from JSON Object using atoms as field names.
+% 
+% Note: Using ConvertFieldNames = true will force converting all field names to atoms
+% potentially exhausting the number of available atoms in the vm.
+%
+-spec from_json/2 :: (Json :: iodata(), ConvertFieldNames :: boolean()) -> orddict().
+from_json(Json, ConvertFieldNames) ->
     JsonTerm = mochijson2:decode(Json),
-    from_json_term(JsonTerm).
+    from_json_term(JsonTerm, ConvertFieldNames).
 
 
 % @doc Create Erlson dictionary from JSON abstract term representation
 %
 % The JSON term representation can be obtained from JSON iolist() by calling
 % mochijson2:decode/1
-from_json_term(JsonTerm = {'struct', _Fields}) ->
-    decode_json_term(JsonTerm);
 from_json_term(JsonTerm) ->
+    from_json_term(JsonTerm, false).
+
+from_json_term(JsonTerm = {'struct', _Fields}, ConvertFieldNames) ->
+    decode_json_term(JsonTerm, ConvertFieldNames);
+from_json_term(JsonTerm, _ConvertFieldNames) ->
     erlang:error('erlson_json_struct_expected', [JsonTerm]).
 
 
@@ -333,45 +345,53 @@ list_from_json_array(Json) ->%, list_to_json_array, list_from_json_term and list
 
 % @doc Create list of Erlson dictionaries from list of JSON abstract terms
 list_from_json_term(JsonTerm) when is_list(JsonTerm) ->
-    decode_json_term(JsonTerm);
+    decode_json_term(JsonTerm, false);
 list_from_json_term(JsonTerm) ->
     erlang:error('erlson_json_array_expected', [JsonTerm]).
 
 
-decode_json_term(X) when
+decode_json_term(X, _) when
         is_binary(X); % JSON string
         is_integer(X); is_float(X); % JSON number
         is_boolean(X) -> % JSON true | false
     X;
-decode_json_term({'struct', Fields}) -> % JSON object
-    from_json_fields(Fields);
-decode_json_term(L) when is_list(L) -> % JSON array
-    [ decode_json_term(X) || X <- L ];
-decode_json_term('null') ->
+decode_json_term({'struct', Fields}, ConvertFieldNames) -> % JSON object
+    from_json_fields(Fields, ConvertFieldNames);
+decode_json_term(L, ConvertFieldNames) when is_list(L) -> % JSON array
+    [ decode_json_term(X, ConvertFieldNames) || X <- L ];
+decode_json_term('null', _ConvertFieldNames) ->
     % decoding JSON null as a more conventional 'undefined'
     'undefined'.
 
 
-from_json_fields(L) ->
+from_json_fields(L, ConvertFieldNames) ->
     % inserting elements to the new orddict() one by one
     % XXX: use merge sort instead of insertion sort?
-    lists:foldl(fun store_json_field/2, _EmptyDict = [], L).
+    lists:foldl(fun(NV, Dict) ->
+                    store_json_field(NV, Dict, ConvertFieldNames)
+            end, _EmptyDict = [], L).
 
+store_json_field(V, Dict) ->
+    store_json_field(V, Dict, false).
 
-store_json_field({N, V}, Dict) ->
-    Name = decode_json_field_name(N),
-    Value = decode_json_term(V),
+store_json_field({N, V}, Dict, ConvertFieldNames) ->
+    Name = decode_json_field_name(N, ConvertFieldNames),
+    Value = decode_json_term(V, ConvertFieldNames),
     store_val(Name, Value, Dict).
 
 
 % the way Erlson treats field names is important. Each field can be represented
 % as either atom() or binary(), and because Erlson dict is ordered, all binary()
 % fields will be stored closer to the tail of the list
-decode_json_field_name(N) ->
+decode_json_field_name(N, false) ->
     try binary_to_existing_atom(N, utf8)
     catch
-        error:badarg -> binary_to_atom(N, utf8)
-    end.
+        error:badarg -> N
+    end;
+
+decode_json_field_name(N, true) ->
+    binary_to_atom(N, utf8).
+
 
 
 % @doc Enable Erlson syntax in Erlang shell
