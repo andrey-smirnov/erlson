@@ -1,5 +1,5 @@
 %%  Copyright (c) 2011 Anton Lavrik, http://github.com/alavrik
-%%  
+%%
 %%  Permission is hereby granted, free of charge, to any person obtaining
 %%  a copy of this software and associated documentation files (the
 %%  "Software"), to deal in the Software without restriction, including
@@ -7,10 +7,10 @@
 %%  distribute, sublicense, and/or sell copies of the Software, and to
 %%  permit persons to whom the Software is furnished to do so, subject to
 %%  the following conditions:
-%%  
+%%
 %%  The above copyright notice and this permission notice shall be
 %%  included in all copies or substantial portions of the Software.
-%%  
+%%
 %%  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 %%  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 %%  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -30,8 +30,8 @@
 -export([from_proplist/1, from_nested_proplist/1, from_nested_proplist/2]).
 -export([to_json/1, from_json/1]).
 -export([list_to_json_array/1, list_from_json_array/1]).
-% these two functions are useful, if there's a need to call mochijson2:decode
-% and mochijson2:encode separately
+% these two functions are useful, if there's a need to call jiffy:decode
+% and jiffy:encode separately
 -export([to_json_term/1, from_json_term/1]).
 
 % these functions are used by Erlson compiled code
@@ -241,13 +241,14 @@ store_proplist_elem(_X, _Dict, _MaxDepth) ->
 -spec to_json/1 :: (Dict :: orddict()) -> iolist().
 to_json(Dict) ->
     JsonStruct = to_json_term(Dict),
-    mochijson2:encode(JsonStruct).
+    %% We wrap returned value to preserve the API.
+    [jiffy:encode(JsonStruct)].
 
 
 % @doc Convert Erlson dictionary to JSON abstract term representation
 %
-% The JSON term representation can be converted to JSON iolist() by calling
-% mochijson2:encode/1
+% The JSON term representation can be converted to JSON iodata() by calling
+% jiffy:encode/1
 to_json_term(Dict) ->
     try to_json_struct(Dict)
     catch
@@ -262,7 +263,8 @@ to_json_term(Dict) ->
             | boolean() | {'json', binary()} | {json, list()}]) -> iolist().
 list_to_json_array(List) ->
     JsonStruct = list_to_json_term(List),
-    mochijson2:encode(JsonStruct).
+    %% We wrap returned value to preserve the API.
+    [jiffy:encode(JsonStruct)].
 
 
 % @doc Convert list of Erlson dictionaries to list of JSON abstract terms
@@ -277,7 +279,7 @@ list_to_json_term(List) ->
 
 to_json_struct(Dict) when is_list(Dict) ->
     Fields = lists:map(fun to_json_field/1, Dict),
-    {'struct', Fields};
+    {Fields};
 to_json_struct(_) ->
     throw('erlson_bad_json').
 
@@ -302,9 +304,6 @@ encode_json_term(L) when is_list(L) ->
         % otherwise, encode as JSON array
         [ encode_json_term(X) || X <- L ]
     end;
-encode_json_term({'json', X} = Json) when is_binary(X); is_list(X) -> % iodata()
-    % quoted JSON -- this notation is directly supported by mochijson2
-    Json;
 encode_json_term(_) ->
     throw('erlson_bad_json').
 
@@ -312,15 +311,15 @@ encode_json_term(_) ->
 % @doc Create Erlson dictionary from JSON Object
 -spec from_json/1 :: (Json :: iodata()) -> orddict().
 from_json(Json) ->
-    JsonTerm = mochijson2:decode(Json),
+    JsonTerm = jiffy:decode(Json),
     from_json_term(JsonTerm).
 
 
 % @doc Create Erlson dictionary from JSON abstract term representation
 %
-% The JSON term representation can be obtained from JSON iolist() by calling
-% mochijson2:decode/1
-from_json_term(JsonTerm = {'struct', _Fields}) ->
+% The JSON term representation can be obtained from JSON iodata() by calling
+% jiffy:decode/1
+from_json_term(JsonTerm = {_Fields}) ->
     decode_json_term(JsonTerm);
 from_json_term(JsonTerm) ->
     erlang:error('erlson_json_struct_expected', [JsonTerm]).
@@ -330,7 +329,7 @@ from_json_term(JsonTerm) ->
  -spec list_from_json_array/1 :: (Json :: iodata()) ->
     [orddict() | binary() | integer() | float() | boolean() | 'undefined'].
 list_from_json_array(Json) ->%, list_to_json_array, list_from_json_term and list_to_json_term
-    JsonTerm = mochijson2:decode(Json),
+    JsonTerm = jiffy:decode(Json),
     list_from_json_term(JsonTerm).
 
 
@@ -346,7 +345,7 @@ decode_json_term(X) when
         is_integer(X); is_float(X); % JSON number
         is_boolean(X) -> % JSON true | false
     X;
-decode_json_term({'struct', Fields}) -> % JSON object
+decode_json_term({Fields}) -> % JSON object
     from_json_fields(Fields);
 decode_json_term(L) when is_list(L) -> % JSON array
     [ decode_json_term(X) || X <- L ];
@@ -408,4 +407,3 @@ init(Mod) ->
             exit({erlson_error,
                     "failed to load code from module " ++ atom_to_list(Mod)})
     end.
-

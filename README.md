@@ -263,18 +263,7 @@ its grammar to remain compatible.
 Dependencies
 ------------
 
-Erlson relies on `mochijson2` library for JSON encoding and decoding. It comes
-as a part of [Mochiweb](https://github.com/mochi/mochiweb). Erlson doesn't
-automatically include it, but if you wish to do it with a rebar-enabled project,
-add it as dependency in your `rebar.config`. For example:
-
-```erlang
-    {deps,
-        [
-            % we need Mochiweb for mochijson2
-            {mochiweb, "", {git, "https://github.com/mochi/mochiweb.git", {branch, "master"}}}
-        ]}.
-```
+Erlson relies on `jiffy` library for JSON encoding and decoding. It can be found [here](https://github.com/davisp/jiffy).
 
 
 Authors
@@ -288,4 +277,3 @@ License
 
 Erlson is distributed under the terms of a MIT license. See the LICENSE file for
 details.
-

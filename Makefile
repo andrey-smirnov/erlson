@@ -7,6 +7,10 @@ REBAR ?= rebar
 all: compile
 
 
+deps:
+	rebar get-deps
+
+
 compile:
 	rebar compile
 
@@ -17,4 +21,3 @@ test: compile
 
 clean:
 	rebar clean -r
-
